@@ -7,14 +7,15 @@
  History:
  
  v. 0.1.0 (02/17/2012) - Initial Release
- v. 0.1.1 (02/21/2012) - Add support of gigabyte size images
+ v. 0.1.1 (02/21/2012) - Add support for gigabyte size images
+ v. 0.1.2 (05/24/2018) - Add support for dpi and depth
  
  Related links:
  
  http://www.cocoaintheshell.com/2012/02/quicklook-images-dimensions/
  http://www.carbondev.com/site/?page=GetFileSize
  
- Copyright (c) 2012 Sriranga R. Veeraraghavan <ranga@calalum.org>
+ Copyright (c) 2012, 2018 Sriranga R. Veeraraghavan <ranga@calalum.org>
 
  Permission is hereby granted, free of charge, to any person obtaining 
  a copy of this software and associated documentation files (the "Software"),
@@ -64,11 +65,15 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
     CFDictionaryRef properties = NULL;
     CFNumberRef widthRef = NULL;
     CFNumberRef heightRef = NULL;
+    CFNumberRef dpiRef = NULL;
+    CFNumberRef depthRef = NULL;
     CFStringRef fileName = NULL;
     CFStringRef keys[1];
     CFStringRef values[1];
     CFStringRef fileSizeStr = NULL;
     CFStringRef fileSizeSpec = NULL;
+    CFStringRef dpiStr = NULL;
+    CFStringRef depthStr = NULL;
     FSRef imgRef;
     FSCatalogInfoBitmap whichInfo;
     FSCatalogInfo catalogInfo;
@@ -77,6 +82,8 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
     Boolean err = false;
     int width = 0;
     int height = 0;
+    int dpi = 0;
+    int depth = 0;
     
     do {
 
@@ -122,6 +129,38 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
         }
         CFNumberGetValue(heightRef, kCFNumberIntType, &height);
     
+        /* get the DPI of the image */
+        
+        dpiRef = CFDictionaryGetValue(imgProperties,
+                                      kCGImagePropertyDPIHeight);
+        if (dpiRef != NULL) {
+            CFNumberGetValue(dpiRef, kCFNumberIntType, &dpi);
+            dpiStr = CFStringCreateWithFormat(kCFAllocatorDefault,
+                                              NULL,
+                                              CFSTR(" - %d DPI"),
+                                              dpi);
+        } else {
+            dpiStr = CFStringCreateWithFormat(kCFAllocatorDefault,
+                                              NULL,
+                                              CFSTR(""));
+        }
+
+        /* get the depth of the image */
+        
+        depthRef = CFDictionaryGetValue(imgProperties,
+                                        kCGImagePropertyDepth);
+        if (depthRef != NULL) {
+            CFNumberGetValue(depthRef, kCFNumberIntType, &depth);
+            depthStr = CFStringCreateWithFormat(kCFAllocatorDefault,
+                                                NULL,
+                                                CFSTR(" - %d BPP"),
+                                                depth);
+        } else {
+            depthStr = CFStringCreateWithFormat(kCFAllocatorDefault,
+                                                NULL,
+                                                CFSTR(""));
+        }
+
         /* determine the size of the image */
         
         if (CFURLGetFSRef(url, &imgRef) == TRUE) {
@@ -186,10 +225,12 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
         
         values[0] = CFStringCreateWithFormat(kCFAllocatorDefault, 
                                              NULL, 
-                                             CFSTR("%@ (%dx%d%@)"),
+                                             CFSTR("%@ (%dx%d%@%@%@)"),
                                              fileName,
                                              width, 
                                              height,
+                                             dpiStr,
+                                             depthStr,
                                              fileSizeStr);
                 
         properties = CFDictionaryCreate(kCFAllocatorDefault, 
