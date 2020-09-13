@@ -1,21 +1,23 @@
 /* 
 
- GeneratePreviewForURL - generate image previews with image dimensions
-                         and size displayed in title bar
- $Id: GeneratePreviewForURL.c 1435 2015-08-14 16:48:34Z ranga $
+ GeneratePreviewForURL - generate image previews with image details
+                         displayed in title bar
  
  History:
  
  v. 0.1.0 (02/17/2012) - Initial Release
  v. 0.1.1 (02/21/2012) - Add support for gigabyte size images
  v. 0.1.2 (05/24/2018) - Add support for dpi and depth
+ v. 0.1.3 (09/09/2020) - Add support for webp images
  
  Related links:
  
  http://www.cocoaintheshell.com/2012/02/quicklook-images-dimensions/
  http://www.carbondev.com/site/?page=GetFileSize
+ https://github.com/emin/WebPQuickLook
+ https://developers.google.com/speed/webp/
  
- Copyright (c) 2012, 2018 Sriranga R. Veeraraghavan <ranga@calalum.org>
+ Copyright (c) 2012, 2018, 2020 Sriranga Veeraraghavan <ranga@calalum.org>
 
  Permission is hereby granted, free of charge, to any person obtaining 
  a copy of this software and associated documentation files (the "Software"),
@@ -36,9 +38,26 @@
  DEALINGS IN THE SOFTWARE.
 */
 
-#include <CoreFoundation/CoreFoundation.h>
-#include <CoreServices/CoreServices.h>
-#include <QuickLook/QuickLook.h>
+/* includes */
+
+#import <CoreFoundation/CoreFoundation.h>
+#import <CoreServices/CoreServices.h>
+#import <QuickLook/QuickLook.h>
+#import "Globals.h"
+
+/* webp headers */
+
+#include "src/webp/decode.h"
+#include "src/webp/demux.h"
+
+/* globals */
+
+const short gWebpLossless = 2;
+
+/* webp's UTIs */
+
+const CFStringRef gPublicWebp = CFSTR("public.webp");
+const CFStringRef gOrgWebmWebp = CFSTR("org.webmproject.webp");
 
 /* prototypes */
 
@@ -49,8 +68,86 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
                                CFDictionaryRef options);
 void CancelPreviewGeneration(void *thisInterface, 
                              QLPreviewRequestRef preview);
+CFStringRef GetFileSizeAsString(CFURLRef url);
 
 /* functions */
+
+/* GetFileSizeAsString - returns the size of a given file as a string */
+
+CFStringRef GetFileSizeAsString(CFURLRef url)
+{
+    FSRef imgRef;
+    FSCatalogInfoBitmap whichInfo;
+    FSCatalogInfo catalogInfo;
+    UInt64 fileSizeInBytes = 0;
+    Float64 fileSize = 0.0;
+    CFStringRef fileSizeStr = NULL;
+    CFStringRef fileSizeSpec = NULL;
+    
+    if (url == NULL) {
+        return NULL;
+    }
+    
+    if (CFURLGetFSRef(url, &imgRef) != TRUE) {
+        fileSizeStr =
+            CFStringCreateWithFormat(kCFAllocatorDefault,
+                                     NULL,
+                                     CFSTR(""));
+    }
+
+    /*
+        figure out the file size by adding up the logical sizes
+        of the file's data and resource forks
+     */
+               
+    whichInfo =
+        kFSCatInfoNodeFlags |
+        kFSCatInfoRsrcSizes |
+        kFSCatInfoDataSizes;
+    
+    if (FSGetCatalogInfo(&imgRef,
+                         whichInfo,
+                         &catalogInfo,
+                         NULL,
+                         NULL,
+                         NULL) == noErr &&
+        !(catalogInfo.nodeFlags & kFSNodeIsDirectoryMask)) {
+            fileSizeInBytes += catalogInfo.dataLogicalSize;
+            fileSizeInBytes += catalogInfo.rsrcLogicalSize;
+    }
+
+    /* format the file size into GB, MB, KB, or Bytes, as appropriate */
+    
+    fileSizeSpec = CFSTR("B");
+    
+    if (fileSizeInBytes >= 100) {
+                   
+        fileSize = fileSizeInBytes / 1000.0;
+        
+        if (fileSize >= 1000.0) {
+            
+            fileSize /= 1000.0;
+            
+            if (fileSize >= 1000.0) {
+                fileSize /= 1000.0;
+                fileSizeSpec = CFSTR("GB");
+            } else {
+                fileSizeSpec = CFSTR("MB");
+            }
+            
+        } else {
+            fileSizeSpec = CFSTR("KB");
+        }
+    }
+    
+    fileSizeStr =
+        CFStringCreateWithFormat(kCFAllocatorDefault,
+                                 NULL,
+                                 CFSTR(" - %.1f %@"),
+                                 fileSize,
+                                 fileSizeSpec);
+    return fileSizeStr;
+}
 
 /* GeneratePreviewForURL - generates the quicklook preview for a given file */
 
@@ -61,6 +158,11 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
                                CFDictionaryRef options)
 {
     CGImageSourceRef imgSrc = NULL;
+    CGBitmapInfo bitmapInfo = kCGBitmapByteOrderDefault;
+    CGSize imgSize;
+    CGContextRef ctx = NULL;
+    CGDataProviderRef provider = NULL;
+    CGImageRef image = NULL;
     CFDictionaryRef imgProperties = NULL;
     CFDictionaryRef properties = NULL;
     CFNumberRef widthRef = NULL;
@@ -68,22 +170,301 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
     CFNumberRef dpiRef = NULL;
     CFNumberRef depthRef = NULL;
     CFStringRef fileName = NULL;
+    CFStringRef filePath = NULL;
     CFStringRef keys[1];
     CFStringRef values[1];
     CFStringRef fileSizeStr = NULL;
-    CFStringRef fileSizeSpec = NULL;
     CFStringRef dpiStr = NULL;
     CFStringRef depthStr = NULL;
-    FSRef imgRef;
-    FSCatalogInfoBitmap whichInfo;
-    FSCatalogInfo catalogInfo;
-    UInt64 fileSizeInBytes = 0;
-    Float64 fileSize = 0.0;
+    CFIndex fileLength;
+    CFIndex fileMaxSize;
     Boolean err = false;
+    FILE *imageF = NULL;
+    WebPBitstreamFeatures features;
+    uint8_t *rgbData = NULL;
+    WebPData webpData;
+    WebPDemuxer *demux = NULL;
+    WebPIterator iter;
+    uint8_t *data = NULL;
+    size_t dataSize = 0;
+    char *filePathStr = NULL;
+    VP8StatusCode status;
     int width = 0;
     int height = 0;
     int dpi = 0;
     int depth = 0;
+    int samples = 3;
+
+    /* handle webp images */
+    
+    if (CFEqual(contentTypeUTI, gPublicWebp) ||
+        CFEqual(contentTypeUTI, gOrgWebmWebp)) {
+
+        do {
+
+            filePath =
+                CFURLCreateStringByReplacingPercentEscapes(kCFAllocatorDefault,
+                                                           CFURLCopyPath(url),
+                                                           CFSTR(""));
+            if (filePath == NULL) {
+                err = true;
+                break;
+            }
+                
+            fileLength  = CFStringGetLength(filePath);
+            fileMaxSize =
+                CFStringGetMaximumSizeForEncoding(fileLength,
+                                                  kCFStringEncodingUTF8);
+
+            filePathStr = malloc(fileMaxSize + 1);
+            if (filePathStr == NULL) {
+                err = true;
+                break;
+            }
+
+            CFStringGetCString(filePath,
+                               filePathStr,
+                               fileMaxSize,
+                               kCFStringEncodingUTF8);
+
+            CFRelease(filePath);
+                        
+            /* load the image */
+            
+            imageF = fopen((const char *)filePathStr, "rb");
+            if (imageF == NULL) {
+                err = true;
+                break;
+            }
+        
+            if (filePathStr != NULL) {
+                free(filePathStr);
+                filePathStr = NULL;
+            }
+
+            fseek(imageF, 0, SEEK_END);
+            dataSize = ftell(imageF);
+            fseek(imageF, 0, SEEK_SET);
+
+            if (QLPreviewRequestIsCancelled(preview)) {
+                break;
+            }
+
+            if (dataSize <= 0) {
+                err = true;
+                break;
+            }
+            
+            data = malloc(dataSize + 1);
+            if (data == NULL) {
+                err = true;
+                break;
+            }
+            
+            if (QLPreviewRequestIsCancelled(preview)) {
+                break;
+            }
+
+            if (fread(data, dataSize, 1, imageF) != 1) {
+                err = true;
+                break;
+            }
+            data[dataSize] = '\0';
+
+            if (QLPreviewRequestIsCancelled(preview)) {
+                break;
+            }
+
+            status = WebPGetFeatures(data, dataSize, &features);
+            if (status != VP8_STATUS_OK) {
+                err = true;
+                break;
+            }
+            
+            if (features.has_animation) {
+
+                /* animation - extract the first frame and use it as
+                   the preview */
+
+                webpData.bytes = data;
+                webpData.size = dataSize;
+                
+                demux = WebPDemux(&webpData);
+                if (demux == NULL) {
+                    err = true;
+                    break;
+                }
+                
+                if (WebPDemuxGetFrame(demux, 1, &iter)) {
+                    if (features.has_alpha) {
+                        rgbData = WebPDecodeRGBA(iter.fragment.bytes,
+                                                 dataSize,
+                                                 &width,
+                                                 &height);
+                        samples = 4;
+                        bitmapInfo = kCGImageAlphaLast;
+                    } else {
+                        rgbData = WebPDecodeRGB(iter.fragment.bytes,
+                                                dataSize,
+                                                &width,
+                                                &height);
+                    }
+                    WebPDemuxReleaseIterator(&iter);
+                } else {
+                    err = true;
+                }
+
+                WebPDemuxDelete(demux);
+                
+                if (err == true) {
+                    break;
+                }
+                
+            } else {
+                
+                /* still image */
+                
+                if (features.has_alpha) {
+                    rgbData = WebPDecodeRGBA(data, dataSize, &width, &height);
+                    samples = 4;
+                    bitmapInfo = kCGImageAlphaLast;
+                } else {
+                    rgbData = WebPDecodeRGB(data, dataSize, &width, &height);
+                }
+
+            }
+
+            if (rgbData == NULL) {
+                err = true;
+                break;
+            }
+
+            /* create an image to display from the webp data */
+            
+            imgSize = CGSizeMake(width, height);
+            
+            keys[0] = kQLPreviewPropertyDisplayNameKey;
+
+            /* get the image's filename from the image's URL */
+            
+            fileName = CFURLCopyLastPathComponent(url);
+
+            fileSizeStr = GetFileSizeAsString(url);
+            
+            values[0] =
+                CFStringCreateWithFormat(kCFAllocatorDefault,
+                                         NULL,
+                                         CFSTR("%@ (%dx%d %@%@)"),
+                                         fileName == NULL ? CFSTR("(NULL)")
+                                                          : fileName,
+                                         width,
+                                         height,
+                                         fileSizeStr == NULL ? CFSTR("")
+                                                             : fileSizeStr,
+                                         features.format == gWebpLossless
+                                         ? CFSTR(" (Lossless)")
+                                         : CFSTR(""));
+                                    
+            if (values[0] == NULL) {
+                err = true;
+                break;
+            }
+            
+            properties = CFDictionaryCreate(kCFAllocatorDefault,
+                                            (const void**)keys,
+                                            (const void**)values, 1,
+                                            &kCFTypeDictionaryKeyCallBacks,
+                                            &kCFTypeDictionaryValueCallBacks);
+                        
+            ctx =
+                QLPreviewRequestCreateContext(preview,
+                                              imgSize,
+                                              true,
+                                              properties == NULL ? options
+                                                                 : properties);
+            if (ctx == NULL) {
+                err = true;
+                break;
+            }
+            
+            provider = CGDataProviderCreateWithData(NULL,
+                                                    rgbData,
+                                                    width*height*samples,
+                                                    NULL);
+            if (provider == NULL) {
+                err = true;
+                break;
+            }
+            
+            image = CGImageCreate(width,
+                                  height,
+                                  8,
+                                  8 * samples,
+                                  width * samples,
+                                  CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo,
+                                  provider,
+                                  NULL,
+                                  false,
+                                  kCGRenderingIntentDefault);
+            if (image == NULL) {
+                err = true;
+                break;
+            }
+            
+            CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), image);
+            CGContextFlush(ctx);
+            QLPreviewRequestFlushContext(preview, ctx);
+            
+        } while (0);
+        
+        /* clean up */
+
+        if (data != NULL) {
+            free(data);
+            data = NULL;
+        }
+        
+        if (imageF != NULL) {
+            fclose(imageF);
+        }
+
+        if (fileName != NULL) {
+            CFRelease(fileName);
+        }
+
+        if (fileSizeStr != NULL) {
+            CFRelease(fileSizeStr);
+        }
+
+        if (image != NULL) {
+            CFRelease(image);
+        }
+        
+        if (provider != NULL) {
+            CFRelease(provider);
+        }
+        
+        if (properties != NULL) {
+            CFRelease(properties);
+        }
+        
+        if (values[0] != NULL) {
+            CFRelease(values[0]);
+        }
+        
+        if (ctx != NULL) {
+            CFRelease(ctx);
+        }
+        
+        if (rgbData != NULL) {
+            WebPFree((void *)rgbData);
+        }
+        
+        return (err == true ? -1 : noErr);
+    }
+    
+    /* handle all other image types */
     
     do {
 
@@ -108,7 +489,7 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
             err = true;
             break;
         }
-        
+
         /* get the image's width from its properties */
         
         widthRef = CFDictionaryGetValue(imgProperties, 
@@ -161,63 +542,9 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
                                                 CFSTR(""));
         }
 
-        /* determine the size of the image */
-        
-        if (CFURLGetFSRef(url, &imgRef) == TRUE) {
+        /* get the image's size */
 
-            /* figure out the file size by adding up the logical sizes
-               of the file's data and resource forks */
-            
-             whichInfo = 
-                kFSCatInfoNodeFlags | 
-                kFSCatInfoRsrcSizes | 
-                kFSCatInfoDataSizes;
-            if (FSGetCatalogInfo(&imgRef, whichInfo, &catalogInfo, 
-                                 NULL, NULL,NULL) == noErr &&
-                !(catalogInfo.nodeFlags & kFSNodeIsDirectoryMask)) {
-                fileSizeInBytes += catalogInfo.dataLogicalSize;
-                fileSizeInBytes += catalogInfo.rsrcLogicalSize;
-            }
-
-            /* format the file size into GB, MB, KB, or Bytes, as 
-               appropriate */
-            
-            if (fileSizeInBytes >= 100) {
-                
-                fileSize = fileSizeInBytes / 1000.0;
-                if (fileSize >= 1000.0) {
-                    fileSize /= 1000.0;                    
-                    if (fileSize >= 1000.0) {
-                        fileSize /= 1000.0;
-                        fileSizeSpec = CFSTR("GB");
-                    } else {                    
-                        fileSizeSpec = CFSTR("MB");
-                    }
-                } else {
-                    fileSizeSpec = CFSTR("KB");
-                }
-                
-                fileSizeStr = 
-                    CFStringCreateWithFormat(kCFAllocatorDefault, 
-                                             NULL,
-                                             CFSTR(" - %.1f %@"),
-                                             fileSize,
-                                             fileSizeSpec);
-            } else {
-                fileSizeStr = 
-                    CFStringCreateWithFormat(kCFAllocatorDefault, 
-                                             NULL,
-                                             CFSTR(" - %f B"),
-                                             fileSize);
-            }
-                        
-        } else {
-            fileSizeStr = 
-                CFStringCreateWithFormat(kCFAllocatorDefault, 
-                                         NULL,
-                                         CFSTR("")); 
-
-        }
+        fileSizeStr = GetFileSizeAsString(url);
 
         /* format the title string */
         
@@ -232,8 +559,7 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
                                              dpiStr,
                                              depthStr,
                                              fileSizeStr);
-                
-        properties = CFDictionaryCreate(kCFAllocatorDefault, 
+        properties = CFDictionaryCreate(kCFAllocatorDefault,
                                         (const void**)keys, 
                                         (const void**)values, 1, 
                                         &kCFTypeDictionaryKeyCallBacks, 
@@ -246,10 +572,24 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
                                          properties);
 
     /* clean up */
+
+    if (fileSizeStr != NULL) {
+        CFRelease(fileSizeStr);
+    }
+
+    if (dpiStr != NULL) {
+        CFRelease(dpiStr);
+    }
+    
+    if (depthStr != NULL) {
+        CFRelease(depthStr);
+    }
+    
+    if (values[0] != NULL) {
+        CFRelease(values[0]);
+    }
     
     if (properties != NULL) {
-        CFRelease(fileSizeStr);
-        CFRelease(values[0]);
         CFRelease(properties);
     }
     
@@ -265,7 +605,7 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
         CFRelease(fileName);
     }
     
-    return (err == true ? noErr : -1);
+    return (err == true ? -1 : noErr);
 }
 
 void CancelPreviewGeneration(void *thisInterface, 
