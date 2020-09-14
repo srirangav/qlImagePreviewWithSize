@@ -36,4 +36,6 @@
 const extern CFStringRef gPublicWebp;
 const extern CFStringRef gOrgWebmWebp;
 
+const extern long gMaxWebpSize;
+
 #endif /* Globals_h */

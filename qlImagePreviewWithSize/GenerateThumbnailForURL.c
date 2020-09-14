@@ -150,6 +150,16 @@ OSStatus GenerateThumbnailForURL(void *thisInterface,
             err = true;
             break;
         }
+
+        /*
+            if the webp file is more than 30MB, don't bother generating
+            a thumbnail
+         */
+
+        if (dataSize > gMaxWebpSize) {
+            QLThumbnailRequestSetImageAtURL(thumbnail, url, NULL);
+            break;
+        }
         
         data = malloc(dataSize + 1);
         if (data == NULL) {
@@ -209,7 +219,9 @@ OSStatus GenerateThumbnailForURL(void *thisInterface,
             }
 
             if (WebPDemuxGetFrame(demux, 1, &iter)) {
-                WebPDecode(iter.fragment.bytes, dataSize, &config);
+                WebPDecode(iter.fragment.bytes,
+                           iter.fragment.size,
+                           &config);
                 WebPDemuxReleaseIterator(&iter);
             } else {
                 err = true;
@@ -257,7 +269,7 @@ OSStatus GenerateThumbnailForURL(void *thisInterface,
                                32,
                                thumbnailWidth * 4,
                                CGColorSpaceCreateDeviceRGB(),
-                               kCGImageAlphaLast,
+                               (CGBitmapInfo)kCGImageAlphaLast,
                                provider,
                                NULL,
                                false,
@@ -275,7 +287,7 @@ OSStatus GenerateThumbnailForURL(void *thisInterface,
         }
         
         QLThumbnailRequestSetImage(thumbnail, image, NULL);
-        
+                
     } while (0);
  
     /* clean up */

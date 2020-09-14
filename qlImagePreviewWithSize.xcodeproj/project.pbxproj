@@ -313,6 +313,7 @@
 		26E4AB10250E1021002D0823 /* dec_msa.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dec_msa.c; sourceTree = "<group>"; };
 		26E4AB11250E1021002D0823 /* Makefile.in */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = Makefile.in; sourceTree = "<group>"; };
 		26E4ABC9250ECDD0002D0823 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		26E4ABCB250EF2A6002D0823 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -350,6 +351,7 @@
 		2601F22F14EE248D000EDC69 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				26E4ABCB250EF2A6002D0823 /* Foundation.framework */,
 				26E4ABC9250ECDD0002D0823 /* AppKit.framework */,
 				2601F23014EE248D000EDC69 /* QuickLook.framework */,
 				2601F23214EE248D000EDC69 /* ApplicationServices.framework */,
@@ -362,8 +364,8 @@
 		2601F23814EE248D000EDC69 /* qlImagePreviewWithSize */ = {
 			isa = PBXGroup;
 			children = (
-				2601F23E14EE248D000EDC69 /* GenerateThumbnailForURL.c */,
 				2601F24014EE248D000EDC69 /* GeneratePreviewForURL.c */,
+				2601F23E14EE248D000EDC69 /* GenerateThumbnailForURL.c */,
 				26997275250C5695002D0823 /* Globals.h */,
 				2601F24214EE248D000EDC69 /* main.c */,
 				26AD2E1E250A0627002D0823 /* webp */,

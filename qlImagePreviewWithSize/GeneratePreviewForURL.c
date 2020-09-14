@@ -53,6 +53,7 @@
 /* globals */
 
 const short gWebpLossless = 2;
+const long  gMaxWebpSize = 20*1024*1024;
 
 /* webp's UTIs */
 
@@ -189,12 +190,14 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
     size_t dataSize = 0;
     char *filePathStr = NULL;
     VP8StatusCode status;
+    uint32_t frames = 0;
+    uint32_t frameNo = 1;
     int width = 0;
     int height = 0;
     int dpi = 0;
     int depth = 0;
     int samples = 3;
-
+    
     /* handle webp images */
     
     if (CFEqual(contentTypeUTI, gPublicWebp) ||
@@ -254,6 +257,19 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
                 err = true;
                 break;
             }
+
+            /*
+                if the webp file is more than 30MB, don't bother
+                generating a preview
+             */
+            
+            if (dataSize > gMaxWebpSize) {
+                QLPreviewRequestSetURLRepresentation(preview,
+                                                     url,
+                                                     contentTypeUTI,
+                                                     properties);
+                break;
+            }
             
             data = malloc(dataSize + 1);
             if (data == NULL) {
@@ -295,25 +311,49 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
                     break;
                 }
                 
-                if (WebPDemuxGetFrame(demux, 1, &iter)) {
+                frames = WebPDemuxGetI(demux, WEBP_FF_FRAME_COUNT);
+                if (frames <= 0) {
+                    err = true;
+                    break;
+                }
+                
+                do {
+                    
+                    if (!WebPDemuxGetFrame(demux, frameNo, &iter)) {
+                        err = true;
+                        break;
+                    }
+                        
                     if (features.has_alpha) {
                         rgbData = WebPDecodeRGBA(iter.fragment.bytes,
-                                                 dataSize,
-                                                 &width,
-                                                 &height);
+                                                 iter.fragment.size,
+                                                 &iter.width,
+                                                 &iter.height);
                         samples = 4;
                         bitmapInfo = kCGImageAlphaLast;
                     } else {
                         rgbData = WebPDecodeRGB(iter.fragment.bytes,
-                                                dataSize,
-                                                &width,
-                                                &height);
+                                                iter.fragment.size,
+                                                &iter.width,
+                                                &iter.height);
                     }
-                    WebPDemuxReleaseIterator(&iter);
-                } else {
-                    err = true;
-                }
 
+                    if (iter.width > width) {
+                        width = iter.width;
+                    }
+                    
+                    if (iter.height > height) {
+                        height = iter.height;
+                    }
+                    
+                    frameNo++;
+                    
+                    break;
+                        
+              //} while (WebPDemuxNextFrame(&iter));
+                } while (0);
+                    
+                WebPDemuxReleaseIterator(&iter);
                 WebPDemuxDelete(demux);
                 
                 if (err == true) {
@@ -372,10 +412,18 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
             
             properties = CFDictionaryCreate(kCFAllocatorDefault,
                                             (const void**)keys,
-                                            (const void**)values, 1,
+                                            (const void**)values,
+                                            1,
                                             &kCFTypeDictionaryKeyCallBacks,
                                             &kCFTypeDictionaryValueCallBacks);
-                        
+
+            /*
+                we could change boolean isBitMap to false, to avoid debug
+                errors, see:
+                https://github.com/Marginal/QLVideo/commit/028b871abf1bb8bc2f0e29985735b0f3c3e49d4a
+                but this causes the images to be very big.
+             */
+            
             ctx =
                 QLPreviewRequestCreateContext(preview,
                                               imgSize,
