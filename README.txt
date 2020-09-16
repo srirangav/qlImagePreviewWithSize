@@ -4,17 +4,17 @@ README
 qlImagePreviewWithSize v0.4
 By Sriranga Veeraraghavan <ranga@calalum.org>
 
-qlImagePreviewWithSize is a QuickLook generator for images that
-includes the dimensions, dpi, depth and size of images in the
-header.  It is based on a similar plugin available here:
+qlImagePreviewWithSize is a QuickLook generator for images that includes 
+the dimensions and other information about the image in the header.  It 
+is based on a similar plugin available here:
 
-http://www.cocoaintheshell.com/2012/02/quicklook-images-dimensions/
+	http://www.cocoaintheshell.com/2012/02/quicklook-images-dimensions/
 
 Webp support is based on a similar plugin available here:
 
-https://github.com/emin/WebPQuickLook
+	https://github.com/emin/WebPQuickLook
 
-To install:
+Install:
 
     1. Copy qlImagePreviewWithSize.qlgenerator to ~/Library/QuickLook
 
@@ -36,13 +36,16 @@ License:
 
 Known Issues:
 
-    If Pixelmator Pro is installed, this quicklook generator will not
-    produce a preview for a webp image because Quicklook always prefers
-    generators that are included in an application and there is no way
-    to override this behavior without editing Pixelmator Pro.  See:
+    1. If Pixelmator Pro is installed, this quicklook generator will not
+       produce a preview for a webp image because Quicklook always prefers
+       generators that are included in an application and there is no way
+       to override this behavior without editing Pixelmator Pro.  See:
 
-    https://stackoverflow.com/questions/11705425/prefer-my-quicklook-plugin
+       https://stackoverflow.com/questions/11705425/prefer-my-quicklook-plugin
 
-TODO:
+     2. If a webp image is over 20MB in size, a preview or thumbnail will 
+        not be generated
 
-    * Support animations in webp files
+     3. Playback of animated webp images is not supported.  The preview and
+        thumbnail for such images is the first frame of the animation.
+
