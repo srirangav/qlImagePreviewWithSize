@@ -36,6 +36,8 @@
 const extern CFStringRef gPublicWebp;
 const extern CFStringRef gOrgWebmWebp;
 
+/* maximum file size to load */
+
 const extern long gMaxWebpSize;
 
 #endif /* Globals_h */

@@ -151,11 +151,8 @@ OSStatus GenerateThumbnailForURL(void *thisInterface,
             break;
         }
 
-        /*
-            if the webp file is more than 30MB, don't bother generating
-            a thumbnail
-         */
-
+        /* if the file is more than 20MB, don't generate a preview */
+        
         if (dataSize > gMaxWebpSize) {
             QLThumbnailRequestSetImageAtURL(thumbnail, url, NULL);
             break;

@@ -62,14 +62,19 @@ const CFStringRef gOrgWebmWebp = CFSTR("org.webmproject.webp");
 
 /* prototypes */
 
-OSStatus GeneratePreviewForURL(void *thisInterface, 
+CFStringRef GetFileSizeAsString(CFURLRef url);
+OSStatus GeneratePreviewForWebpImage(void *thisInterface,
+                                     QLPreviewRequestRef preview,
+                                     CFURLRef url,
+                                     CFStringRef contentTypeUTI,
+                                     CFDictionaryRef options);
+OSStatus GeneratePreviewForURL(void *thisInterface,
                                QLPreviewRequestRef preview, 
                                CFURLRef url, 
                                CFStringRef contentTypeUTI, 
                                CFDictionaryRef options);
-void CancelPreviewGeneration(void *thisInterface, 
+void CancelPreviewGeneration(void *thisInterface,
                              QLPreviewRequestRef preview);
-CFStringRef GetFileSizeAsString(CFURLRef url);
 
 /* functions */
 
@@ -150,33 +155,27 @@ CFStringRef GetFileSizeAsString(CFURLRef url)
     return fileSizeStr;
 }
 
-/* GeneratePreviewForURL - generates the quicklook preview for a given file */
+/* GeneratePreviewForWebpImage - generates the quicklook preview for a
+   webp image */
 
-OSStatus GeneratePreviewForURL(void *thisInterface, 
-                               QLPreviewRequestRef preview, 
-                               CFURLRef url, 
-                               CFStringRef contentTypeUTI, 
-                               CFDictionaryRef options)
+OSStatus GeneratePreviewForWebpImage(void *thisInterface,
+                                     QLPreviewRequestRef preview,
+                                     CFURLRef url,
+                                     CFStringRef contentTypeUTI,
+                                     CFDictionaryRef options)
 {
-    CGImageSourceRef imgSrc = NULL;
     CGBitmapInfo bitmapInfo = kCGBitmapByteOrderDefault;
     CGSize imgSize;
     CGContextRef ctx = NULL;
     CGDataProviderRef provider = NULL;
     CGImageRef image = NULL;
-    CFDictionaryRef imgProperties = NULL;
     CFDictionaryRef properties = NULL;
-    CFNumberRef widthRef = NULL;
-    CFNumberRef heightRef = NULL;
-    CFNumberRef dpiRef = NULL;
-    CFNumberRef depthRef = NULL;
     CFStringRef fileName = NULL;
     CFStringRef filePath = NULL;
     CFStringRef keys[1];
     CFStringRef values[1];
     CFStringRef fileSizeStr = NULL;
-    CFStringRef dpiStr = NULL;
-    CFStringRef depthStr = NULL;
+    CFStringRef animationDetails = NULL;
     CFIndex fileLength;
     CFIndex fileMaxSize;
     Boolean err = false;
@@ -191,139 +190,120 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
     char *filePathStr = NULL;
     VP8StatusCode status;
     uint32_t frames = 0;
-    uint32_t frameNo = 1;
     int width = 0;
     int height = 0;
-    int dpi = 0;
-    int depth = 0;
     int samples = 3;
     
-    /* handle webp images */
-    
-    if (CFEqual(contentTypeUTI, gPublicWebp) ||
-        CFEqual(contentTypeUTI, gOrgWebmWebp)) {
+    do {
 
-        do {
-
-            filePath =
-                CFURLCreateStringByReplacingPercentEscapes(kCFAllocatorDefault,
-                                                           CFURLCopyPath(url),
-                                                           CFSTR(""));
-            if (filePath == NULL) {
-                err = true;
-                break;
-            }
-                
-            fileLength  = CFStringGetLength(filePath);
-            fileMaxSize =
-                CFStringGetMaximumSizeForEncoding(fileLength,
-                                                  kCFStringEncodingUTF8);
-
-            filePathStr = malloc(fileMaxSize + 1);
-            if (filePathStr == NULL) {
-                err = true;
-                break;
-            }
-
-            CFStringGetCString(filePath,
-                               filePathStr,
-                               fileMaxSize,
-                               kCFStringEncodingUTF8);
-
-            CFRelease(filePath);
-                        
-            /* load the image */
+        filePath =
+            CFURLCreateStringByReplacingPercentEscapes(kCFAllocatorDefault,
+                                                       CFURLCopyPath(url),
+                                                       CFSTR(""));
+        if (filePath == NULL) {
+            err = true;
+            break;
+        }
             
-            imageF = fopen((const char *)filePathStr, "rb");
-            if (imageF == NULL) {
-                err = true;
-                break;
-            }
-        
-            if (filePathStr != NULL) {
-                free(filePathStr);
-                filePathStr = NULL;
-            }
+        fileLength  = CFStringGetLength(filePath);
+        fileMaxSize =
+            CFStringGetMaximumSizeForEncoding(fileLength,
+                                              kCFStringEncodingUTF8);
 
-            fseek(imageF, 0, SEEK_END);
-            dataSize = ftell(imageF);
-            fseek(imageF, 0, SEEK_SET);
+        filePathStr = malloc(fileMaxSize + 1);
+        if (filePathStr == NULL) {
+            err = true;
+            break;
+        }
 
-            if (QLPreviewRequestIsCancelled(preview)) {
-                break;
-            }
+        CFStringGetCString(filePath,
+                           filePathStr,
+                           fileMaxSize,
+                           kCFStringEncodingUTF8);
 
-            if (dataSize <= 0) {
-                err = true;
-                break;
-            }
-
-            /*
-                if the webp file is more than 30MB, don't bother
-                generating a preview
-             */
-            
-            if (dataSize > gMaxWebpSize) {
-                QLPreviewRequestSetURLRepresentation(preview,
-                                                     url,
-                                                     contentTypeUTI,
-                                                     properties);
-                break;
-            }
-            
-            data = malloc(dataSize + 1);
-            if (data == NULL) {
-                err = true;
-                break;
-            }
-            
-            if (QLPreviewRequestIsCancelled(preview)) {
-                break;
-            }
-
-            if (fread(data, dataSize, 1, imageF) != 1) {
-                err = true;
-                break;
-            }
-            data[dataSize] = '\0';
-
-            if (QLPreviewRequestIsCancelled(preview)) {
-                break;
-            }
-
-            status = WebPGetFeatures(data, dataSize, &features);
-            if (status != VP8_STATUS_OK) {
-                err = true;
-                break;
-            }
-            
-            if (features.has_animation) {
-
-                /* animation - extract the first frame and use it as
-                   the preview */
-
-                webpData.bytes = data;
-                webpData.size = dataSize;
-                
-                demux = WebPDemux(&webpData);
-                if (demux == NULL) {
-                    err = true;
-                    break;
-                }
-                
-                frames = WebPDemuxGetI(demux, WEBP_FF_FRAME_COUNT);
-                if (frames <= 0) {
-                    err = true;
-                    break;
-                }
-                
-                do {
+        CFRelease(filePath);
                     
-                    if (!WebPDemuxGetFrame(demux, frameNo, &iter)) {
-                        err = true;
-                        break;
-                    }
-                        
+        /* load the image */
+        
+        imageF = fopen((const char *)filePathStr, "rb");
+        if (imageF == NULL) {
+            err = true;
+            break;
+        }
+    
+        if (filePathStr != NULL) {
+            free(filePathStr);
+            filePathStr = NULL;
+        }
+
+        fseek(imageF, 0, SEEK_END);
+        dataSize = ftell(imageF);
+        fseek(imageF, 0, SEEK_SET);
+
+        if (QLPreviewRequestIsCancelled(preview)) {
+            break;
+        }
+
+        if (dataSize <= 0) {
+            err = true;
+            break;
+        }
+
+        /* if the file is more than 20MB, don't generate a preview */
+        
+        if (dataSize > gMaxWebpSize) {
+            QLPreviewRequestSetURLRepresentation(preview,
+                                                 url,
+                                                 contentTypeUTI,
+                                                 properties);
+            break;
+        }
+        
+        data = malloc(dataSize + 1);
+        if (data == NULL) {
+            err = true;
+            break;
+        }
+        
+        if (QLPreviewRequestIsCancelled(preview)) {
+            break;
+        }
+
+        if (fread(data, dataSize, 1, imageF) != 1) {
+            err = true;
+            break;
+        }
+        data[dataSize] = '\0';
+
+        if (QLPreviewRequestIsCancelled(preview)) {
+            break;
+        }
+
+        status = WebPGetFeatures(data, dataSize, &features);
+        if (status != VP8_STATUS_OK) {
+            err = true;
+            break;
+        }
+        
+        if (features.has_animation) {
+
+            /* animation - extract the first frame and use it as
+               the preview */
+
+            webpData.bytes = data;
+            webpData.size = dataSize;
+            
+            demux = WebPDemux(&webpData);
+            if (demux == NULL) {
+                err = true;
+                break;
+            }
+            
+            frames = WebPDemuxGetI(demux, WEBP_FF_FRAME_COUNT);
+            if (frames >= 1) {
+
+                if (WebPDemuxGetFrame(demux, 1, &iter)) {
+
                     if (features.has_alpha) {
                         rgbData = WebPDecodeRGBA(iter.fragment.bytes,
                                                  iter.fragment.size,
@@ -338,178 +318,229 @@ OSStatus GeneratePreviewForURL(void *thisInterface,
                                                 &iter.height);
                     }
 
-                    if (iter.width > width) {
-                        width = iter.width;
-                    }
+                    width = iter.width;
+                    height = iter.height;
                     
-                    if (iter.height > height) {
-                        height = iter.height;
-                    }
-                    
-                    frameNo++;
-                    
-                    break;
-                        
-              //} while (WebPDemuxNextFrame(&iter));
-                } while (0);
-                    
-                WebPDemuxReleaseIterator(&iter);
-                WebPDemuxDelete(demux);
-                
-                if (err == true) {
-                    break;
+                } else {
+                    err = true;
                 }
+                
+                WebPDemuxReleaseIterator(&iter);
                 
             } else {
-                
-                /* still image */
-                
-                if (features.has_alpha) {
-                    rgbData = WebPDecodeRGBA(data, dataSize, &width, &height);
-                    samples = 4;
-                    bitmapInfo = kCGImageAlphaLast;
-                } else {
-                    rgbData = WebPDecodeRGB(data, dataSize, &width, &height);
-                }
-
+                err = true;
             }
 
-            if (rgbData == NULL) {
-                err = true;
+            WebPDemuxDelete(demux);
+   
+            if (err) {
                 break;
             }
-
-            /* create an image to display from the webp data */
             
-            imgSize = CGSizeMake(width, height);
-            
-            keys[0] = kQLPreviewPropertyDisplayNameKey;
-
-            /* get the image's filename from the image's URL */
-            
-            fileName = CFURLCopyLastPathComponent(url);
-
-            fileSizeStr = GetFileSizeAsString(url);
-            
-            values[0] =
+            animationDetails =
                 CFStringCreateWithFormat(kCFAllocatorDefault,
                                          NULL,
-                                         CFSTR("%@ (%dx%d %@%@)"),
-                                         fileName == NULL ? CFSTR("(NULL)")
-                                                          : fileName,
-                                         width,
-                                         height,
-                                         fileSizeStr == NULL ? CFSTR("")
-                                                             : fileSizeStr,
-                                         features.format == gWebpLossless
-                                         ? CFSTR(" (Lossless)")
-                                         : CFSTR(""));
-                                    
-            if (values[0] == NULL) {
-                err = true;
-                break;
+                                         CFSTR(" - Animated (%d Frames)"),
+                                         frames);
+        } else {
+            
+            /* still image */
+            
+            if (features.has_alpha) {
+                rgbData = WebPDecodeRGBA(data, dataSize, &width, &height);
+                samples = 4;
+                bitmapInfo = kCGImageAlphaLast;
+            } else {
+                rgbData = WebPDecodeRGB(data, dataSize, &width, &height);
             }
-            
-            properties = CFDictionaryCreate(kCFAllocatorDefault,
-                                            (const void**)keys,
-                                            (const void**)values,
-                                            1,
-                                            &kCFTypeDictionaryKeyCallBacks,
-                                            &kCFTypeDictionaryValueCallBacks);
 
-            /*
-                we could change boolean isBitMap to false, to avoid debug
-                errors, see:
-                https://github.com/Marginal/QLVideo/commit/028b871abf1bb8bc2f0e29985735b0f3c3e49d4a
-                but this causes the images to be very big.
-             */
-            
-            ctx =
-                QLPreviewRequestCreateContext(preview,
-                                              imgSize,
-                                              true,
-                                              properties == NULL ? options
-                                                                 : properties);
-            if (ctx == NULL) {
-                err = true;
-                break;
-            }
-            
-            provider = CGDataProviderCreateWithData(NULL,
-                                                    rgbData,
-                                                    width*height*samples,
-                                                    NULL);
-            if (provider == NULL) {
-                err = true;
-                break;
-            }
-            
-            image = CGImageCreate(width,
-                                  height,
-                                  8,
-                                  8 * samples,
-                                  width * samples,
-                                  CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo,
-                                  provider,
-                                  NULL,
-                                  false,
-                                  kCGRenderingIntentDefault);
-            if (image == NULL) {
-                err = true;
-                break;
-            }
-            
-            CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), image);
-            CGContextFlush(ctx);
-            QLPreviewRequestFlushContext(preview, ctx);
-            
-        } while (0);
-        
-        /* clean up */
-
-        if (data != NULL) {
-            free(data);
-            data = NULL;
-        }
-        
-        if (imageF != NULL) {
-            fclose(imageF);
         }
 
-        if (fileName != NULL) {
-            CFRelease(fileName);
+        if (rgbData == NULL) {
+            err = true;
+            break;
         }
 
-        if (fileSizeStr != NULL) {
-            CFRelease(fileSizeStr);
-        }
+        /* create an image to display from the webp data */
+        
+        imgSize = CGSizeMake(width, height);
+        
+        keys[0] = kQLPreviewPropertyDisplayNameKey;
 
-        if (image != NULL) {
-            CFRelease(image);
+        /* get the image's filename from the image's URL */
+        
+        fileName = CFURLCopyLastPathComponent(url);
+
+        fileSizeStr = GetFileSizeAsString(url);
+        
+        values[0] =
+            CFStringCreateWithFormat(kCFAllocatorDefault,
+                                     NULL,
+                                     CFSTR("%@ (%dx%d %@%@%@)"),
+                                     fileName == NULL ? CFSTR("(NULL)")
+                                                      : fileName,
+                                     width,
+                                     height,
+                                     fileSizeStr == NULL ? CFSTR("")
+                                                         : fileSizeStr,
+                                     features.format == gWebpLossless
+                                     ? CFSTR(" - Lossless")
+                                     : CFSTR(""),
+                                     animationDetails != NULL
+                                     ? animationDetails : CFSTR(""));
+        if (values[0] == NULL) {
+            err = true;
+            break;
         }
         
-        if (provider != NULL) {
-            CFRelease(provider);
+        fprintf(stderr, "format is %d\n", features.format);
+        
+        properties = CFDictionaryCreate(kCFAllocatorDefault,
+                                        (const void**)keys,
+                                        (const void**)values,
+                                        1,
+                                        &kCFTypeDictionaryKeyCallBacks,
+                                        &kCFTypeDictionaryValueCallBacks);
+
+        /*
+            we could change boolean isBitMap to false, to avoid debug
+            errors, see:
+         
+            https://github.com/Marginal/QLVideo/commit/028b871abf1bb8bc2f0e29985735b0f3c3e49d4a
+            
+            However, we aren't doing this because this causes the preview
+            images to be very large
+         */
+        
+        ctx =
+            QLPreviewRequestCreateContext(preview,
+                                          imgSize,
+                                          true,
+                                          properties == NULL ? options
+                                                             : properties);
+        if (ctx == NULL) {
+            err = true;
+            break;
         }
         
-        if (properties != NULL) {
-            CFRelease(properties);
+        provider = CGDataProviderCreateWithData(NULL,
+                                                rgbData,
+                                                width*height*samples,
+                                                NULL);
+        if (provider == NULL) {
+            err = true;
+            break;
         }
         
-        if (values[0] != NULL) {
-            CFRelease(values[0]);
+        image = CGImageCreate(width,
+                              height,
+                              8,
+                              8 * samples,
+                              width * samples,
+                              CGColorSpaceCreateDeviceRGB(),
+                              bitmapInfo,
+                              provider,
+                              NULL,
+                              false,
+                              kCGRenderingIntentDefault);
+        if (image == NULL) {
+            err = true;
+            break;
         }
         
-        if (ctx != NULL) {
-            CFRelease(ctx);
-        }
+        CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), image);
+        CGContextFlush(ctx);
+        QLPreviewRequestFlushContext(preview, ctx);
         
-        if (rgbData != NULL) {
-            WebPFree((void *)rgbData);
-        }
-        
-        return (err == true ? -1 : noErr);
+    } while (0);
+    
+    /* clean up */
+
+    if (animationDetails != NULL) {
+        CFRelease(animationDetails);
+    }
+    
+    if (data != NULL) {
+        free(data);
+        data = NULL;
+    }
+    
+    if (imageF != NULL) {
+        fclose(imageF);
+    }
+
+    if (fileName != NULL) {
+        CFRelease(fileName);
+    }
+
+    if (fileSizeStr != NULL) {
+        CFRelease(fileSizeStr);
+    }
+
+    if (image != NULL) {
+        CFRelease(image);
+    }
+    
+    if (provider != NULL) {
+        CFRelease(provider);
+    }
+    
+    if (properties != NULL) {
+        CFRelease(properties);
+    }
+    
+    if (values[0] != NULL) {
+        CFRelease(values[0]);
+    }
+    
+    if (ctx != NULL) {
+        CFRelease(ctx);
+    }
+    
+    if (rgbData != NULL) {
+        WebPFree((void *)rgbData);
+    }
+    
+    return (err == true ? -1 : noErr);
+}
+
+/* GeneratePreviewForURL - generates the quicklook preview for a given file */
+
+OSStatus GeneratePreviewForURL(void *thisInterface, 
+                               QLPreviewRequestRef preview, 
+                               CFURLRef url, 
+                               CFStringRef contentTypeUTI, 
+                               CFDictionaryRef options)
+{
+    CGImageSourceRef imgSrc = NULL;
+    CFDictionaryRef imgProperties = NULL;
+    CFDictionaryRef properties = NULL;
+    CFNumberRef widthRef = NULL;
+    CFNumberRef heightRef = NULL;
+    CFNumberRef dpiRef = NULL;
+    CFNumberRef depthRef = NULL;
+    CFStringRef fileName = NULL;
+    CFStringRef keys[1];
+    CFStringRef values[1];
+    CFStringRef fileSizeStr = NULL;
+    CFStringRef dpiStr = NULL;
+    CFStringRef depthStr = NULL;
+    Boolean err = false;
+    int width = 0;
+    int height = 0;
+    int dpi = 0;
+    int depth = 0;
+    
+    /* handle webp images */
+    
+    if (CFEqual(contentTypeUTI, gPublicWebp) ||
+        CFEqual(contentTypeUTI, gOrgWebmWebp)) {
+
+        return GeneratePreviewForWebpImage(thisInterface,
+                                           preview,
+                                           url,
+                                           contentTypeUTI,
+                                           options);
     }
     
     /* handle all other image types */
