@@ -49,3 +49,8 @@ Known Issues:
      3. Playback of animated webp images is not supported.  The preview and
         thumbnail for such images is the first frame of the animation.
 
+     4. This quicklook generator will not work on Catalina (10.15.4) or newer
+        because Apple no longer allows third party quicklook generators to 
+        override the default quicklook generator for public.image.
+
+
