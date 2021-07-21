@@ -40,6 +40,9 @@
 
 /* includes */
 
+#include <sys/attr.h>
+#include <unistd.h>
+
 #import <CoreFoundation/CoreFoundation.h>
 #import <CoreServices/CoreServices.h>
 #import <QuickLook/QuickLook.h>
@@ -60,9 +63,17 @@ const long  gMaxWebpSize = 20*1024*1024;
 const CFStringRef gPublicWebp = CFSTR("public.webp");
 const CFStringRef gOrgWebmWebp = CFSTR("org.webmproject.webp");
 
+struct filesizebuf
+{
+    u_int32_t length;
+    off_t dataForkSize;
+    off_t rsrcForkSize;
+    off_t rsrcForkAllocSize;
+};
+
 /* prototypes */
 
-CFStringRef GetFileSizeAsString(CFURLRef url);
+static CFStringRef GetFileSizeAsString(CFURLRef url);
 OSStatus GeneratePreviewForWebpImage(void *thisInterface,
                                      QLPreviewRequestRef preview,
                                      CFURLRef url,
@@ -80,47 +91,78 @@ void CancelPreviewGeneration(void *thisInterface,
 
 /* GetFileSizeAsString - returns the size of a given file as a string */
 
-CFStringRef GetFileSizeAsString(CFURLRef url)
+static CFStringRef GetFileSizeAsString(CFURLRef url)
 {
-    FSRef imgRef;
-    FSCatalogInfoBitmap whichInfo;
-    FSCatalogInfo catalogInfo;
     UInt64 fileSizeInBytes = 0;
     Float64 fileSize = 0.0;
+    CFStringRef filePath = NULL;
     CFStringRef fileSizeStr = NULL;
     CFStringRef fileSizeSpec = NULL;
+    char *cFilePath;
+    size_t cFilePathLen;
+    int retcode = -1;
+    struct attrlist attrList;
+    struct filesizebuf fsize;
+    unsigned long options = FSOPT_REPORT_FULLSIZE;
     
     if (url == NULL) {
         return NULL;
     }
-    
-    if (CFURLGetFSRef(url, &imgRef) != TRUE) {
-        fileSizeStr =
-            CFStringCreateWithFormat(kCFAllocatorDefault,
-                                     NULL,
-                                     CFSTR(""));
+
+    filePath =
+        CFURLCreateStringByReplacingPercentEscapes(kCFAllocatorDefault,
+                                                   CFURLCopyPath(url),
+                                                   CFSTR(""));
+    if (filePath == NULL) {
+        return NULL;
     }
 
-    /*
-        figure out the file size by adding up the logical sizes
-        of the file's data and resource forks
-     */
-               
-    whichInfo =
-        kFSCatInfoNodeFlags |
-        kFSCatInfoRsrcSizes |
-        kFSCatInfoDataSizes;
+    cFilePathLen = ((CFStringGetLength(filePath)*2)+1)*sizeof(char);
     
-    if (FSGetCatalogInfo(&imgRef,
-                         whichInfo,
-                         &catalogInfo,
-                         NULL,
-                         NULL,
-                         NULL) == noErr &&
-        !(catalogInfo.nodeFlags & kFSNodeIsDirectoryMask)) {
-            fileSizeInBytes += catalogInfo.dataLogicalSize;
-            fileSizeInBytes += catalogInfo.rsrcLogicalSize;
+    cFilePath = malloc(cFilePathLen);
+    if (cFilePath == NULL)
+    {
+        return NULL;
     }
+    
+    memset(cFilePath, '\0', cFilePathLen);
+    
+    if(!CFStringGetCString(filePath,
+                           cFilePath,
+                           cFilePathLen,
+                           kCFStringEncodingUTF8))
+    {
+        free(cFilePath);
+        return NULL;
+    }
+    
+    memset(&attrList, 0, sizeof(attrList));
+        
+    attrList.bitmapcount = ATTR_BIT_MAP_COUNT;
+    attrList.reserved    = 0;
+    attrList.commonattr  = 0;
+    attrList.volattr     = 0;    /* volume attribute group */
+    attrList.dirattr     = 0;    /* directory attribute group */
+    attrList.fileattr    = ATTR_FILE_DATALENGTH |
+                           ATTR_FILE_RSRCLENGTH |
+                           ATTR_FILE_RSRCALLOCSIZE;
+                                 /* file attribute group */
+    attrList.forkattr    = 0;    /* fork attribute group */
+
+    retcode = getattrlist(cFilePath,
+                          &attrList,
+                          &fsize,
+                          sizeof(fsize),
+                          (unsigned int)options);
+    free(cFilePath);
+    
+    if (retcode == -1)
+    {
+        return NULL;
+    }
+
+    fileSizeInBytes += fsize.dataForkSize;
+    fileSizeInBytes += fsize.rsrcForkSize;
 
     /* format the file size into GB, MB, KB, or Bytes, as appropriate */
     
@@ -130,18 +172,24 @@ CFStringRef GetFileSizeAsString(CFURLRef url)
                    
         fileSize = fileSizeInBytes / 1000.0;
         
-        if (fileSize >= 1000.0) {
+        if (fileSize >= 1000.0)
+        {
             
             fileSize /= 1000.0;
             
-            if (fileSize >= 1000.0) {
+            if (fileSize >= 1000.0)
+            {
                 fileSize /= 1000.0;
                 fileSizeSpec = CFSTR("GB");
-            } else {
+            }
+            else
+            {
                 fileSizeSpec = CFSTR("MB");
             }
             
-        } else {
+        }
+        else
+        {
             fileSizeSpec = CFSTR("KB");
         }
     }

@@ -8,11 +8,11 @@ qlImagePreviewWithSize is a QuickLook generator for images that includes
 the dimensions and other information about the image in the header.  It 
 is based on a similar plugin available here:
 
-	http://www.cocoaintheshell.com/2012/02/quicklook-images-dimensions/
+http://www.cocoaintheshell.com/2012/02/quicklook-images-dimensions/
 
 Webp support is based on a similar plugin available here:
 
-	https://github.com/emin/WebPQuickLook
+https://github.com/emin/WebPQuickLook
 
 Install:
 
@@ -37,20 +37,21 @@ License:
 Known Issues:
 
     1. If Pixelmator Pro is installed, this quicklook generator will not
-       produce a preview for a webp image because Quicklook always prefers
-       generators that are included in an application and there is no way
-       to override this behavior without editing Pixelmator Pro.  See:
+       produce a preview for a webp image because Quicklook always 
+       prefers generators that are included in an application and there 
+       is no way to override this behavior without editing Pixelmator Pro.  
+       See:
 
        https://stackoverflow.com/questions/11705425/prefer-my-quicklook-plugin
 
-     2. If a webp image is over 20MB in size, a preview or thumbnail will 
-        not be generated
+    2. If a webp image is over 20MB in size, a preview or thumbnail will 
+       not be generated
 
-     3. Playback of animated webp images is not supported.  The preview and
-        thumbnail for such images is the first frame of the animation.
+    3. Playback of animated webp images is not supported.  The preview 
+       and thumbnail for such images is the first frame of the animation.
 
-     4. This quicklook generator will not work on Catalina (10.15.4) or newer
-        because Apple no longer allows third party quicklook generators to 
-        override the default quicklook generator for public.image.
-
+    4. This quicklook generator will not work on Catalina (10.15.4) or 
+       later because Apple no longer allows third party quicklook 
+       generators to override the default quicklook generator for 
+       public.image.
 

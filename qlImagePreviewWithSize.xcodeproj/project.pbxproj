@@ -15,6 +15,15 @@
 		2601F23F14EE248D000EDC69 /* GenerateThumbnailForURL.c in Sources */ = {isa = PBXBuildFile; fileRef = 2601F23E14EE248D000EDC69 /* GenerateThumbnailForURL.c */; };
 		2601F24114EE248D000EDC69 /* GeneratePreviewForURL.c in Sources */ = {isa = PBXBuildFile; fileRef = 2601F24014EE248D000EDC69 /* GeneratePreviewForURL.c */; };
 		2601F24314EE248D000EDC69 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 2601F24214EE248D000EDC69 /* main.c */; };
+		2606AF232640C4990025DDF3 /* dec_neon.c in Sources */ = {isa = PBXBuildFile; fileRef = 26E4AB02250E1021002D0823 /* dec_neon.c */; };
+		2606AF242640C4C20025DDF3 /* enc_neon.c in Sources */ = {isa = PBXBuildFile; fileRef = 26E4AAFA250E1021002D0823 /* enc_neon.c */; };
+		2606AF252640C4C90025DDF3 /* lossless_enc_neon.c in Sources */ = {isa = PBXBuildFile; fileRef = 26E4AAFE250E1021002D0823 /* lossless_enc_neon.c */; };
+		2606AF262640C4D30025DDF3 /* alpha_processing_neon.c in Sources */ = {isa = PBXBuildFile; fileRef = 26E4AAF3250E1021002D0823 /* alpha_processing_neon.c */; };
+		2606AF272640C5090025DDF3 /* rescaler_neon.c in Sources */ = {isa = PBXBuildFile; fileRef = 26E4AAD0250E1021002D0823 /* rescaler_neon.c */; };
+		2606AF282640C5180025DDF3 /* upsampling_neon.c in Sources */ = {isa = PBXBuildFile; fileRef = 26E4AAD5250E1021002D0823 /* upsampling_neon.c */; };
+		2606AF292640C5250025DDF3 /* cost_neon.c in Sources */ = {isa = PBXBuildFile; fileRef = 26E4AADE250E1021002D0823 /* cost_neon.c */; };
+		2606AF2A2640C5390025DDF3 /* filters_neon.c in Sources */ = {isa = PBXBuildFile; fileRef = 26E4AAE0250E1021002D0823 /* filters_neon.c */; };
+		2606AF2B2640C54A0025DDF3 /* lossless_neon.c in Sources */ = {isa = PBXBuildFile; fileRef = 26E4AAE6250E1021002D0823 /* lossless_neon.c */; };
 		26E4AB13250E1021002D0823 /* muxinternal.c in Sources */ = {isa = PBXBuildFile; fileRef = 26E4AA58250E1021002D0823 /* muxinternal.c */; };
 		26E4AB17250E1021002D0823 /* animi.h in Headers */ = {isa = PBXBuildFile; fileRef = 26E4AA5C250E1021002D0823 /* animi.h */; };
 		26E4AB1B250E1021002D0823 /* muxi.h in Headers */ = {isa = PBXBuildFile; fileRef = 26E4AA60250E1021002D0823 /* muxi.h */; };
@@ -770,6 +779,16 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2606AF252640C4C90025DDF3 /* lossless_enc_neon.c in Sources */,
+				2606AF232640C4990025DDF3 /* dec_neon.c in Sources */,
+				2606AF242640C4C20025DDF3 /* enc_neon.c in Sources */,
+				2606AF272640C5090025DDF3 /* rescaler_neon.c in Sources */,
+				2606AF292640C5250025DDF3 /* cost_neon.c in Sources */,
+				26E4AB8F250E1021002D0823 /* yuv_neon.c in Sources */,
+				2606AF2A2640C5390025DDF3 /* filters_neon.c in Sources */,
+				2606AF262640C4D30025DDF3 /* alpha_processing_neon.c in Sources */,
+				2606AF282640C5180025DDF3 /* upsampling_neon.c in Sources */,
+				2606AF2B2640C54A0025DDF3 /* lossless_neon.c in Sources */,
 				26E4ABC7250E1225002D0823 /* muxread.c in Sources */,
 				26E4ABC8250E1270002D0823 /* muxedit.c in Sources */,
 				26E4AB7B250E1021002D0823 /* upsampling.c in Sources */,
@@ -803,7 +822,6 @@
 				26E4AB8E250E1021002D0823 /* cpu.c in Sources */,
 				26E4ABBD250E1021002D0823 /* dec_clip_tables.c in Sources */,
 				26E4AB13250E1021002D0823 /* muxinternal.c in Sources */,
-				26E4AB8F250E1021002D0823 /* yuv_neon.c in Sources */,
 				26E4AB90250E1021002D0823 /* alpha_processing.c in Sources */,
 				26E4AB6A250E1021002D0823 /* frame_dec.c in Sources */,
 				26E4ABBC250E1021002D0823 /* alpha_processing_sse2.c in Sources */,
@@ -953,8 +971,8 @@
 				GCC_PREFIX_HEADER = "qlImagePreviewWithSize/qlImagePreviewWithSize-Prefix.pch";
 				INFOPLIST_FILE = "qlImagePreviewWithSize/qlImagePreviewWithSize-Info.plist";
 				INSTALL_PATH = /Library/QuickLook;
-				MACOSX_DEPLOYMENT_TARGET = 10.6;
-				MARKETING_VERSION = 0.4;
+				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MARKETING_VERSION = 0.5;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.calalum.ranga.${PRODUCT_NAME:rfc1034identifier}";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -976,8 +994,8 @@
 				GCC_PREFIX_HEADER = "qlImagePreviewWithSize/qlImagePreviewWithSize-Prefix.pch";
 				INFOPLIST_FILE = "qlImagePreviewWithSize/qlImagePreviewWithSize-Info.plist";
 				INSTALL_PATH = /Library/QuickLook;
-				MACOSX_DEPLOYMENT_TARGET = 10.6;
-				MARKETING_VERSION = 0.4;
+				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MARKETING_VERSION = 0.5;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.calalum.ranga.${PRODUCT_NAME:rfc1034identifier}";
 				PRODUCT_NAME = "$(TARGET_NAME)";
