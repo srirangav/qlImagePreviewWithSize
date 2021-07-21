@@ -39,8 +39,8 @@ Known Issues:
     1. If Pixelmator Pro is installed, this quicklook generator will not
        produce a preview for a webp image because Quicklook always 
        prefers generators that are included in an application and there 
-       is no way to override this behavior without editing Pixelmator Pro.  
-       See:
+       is no way to override this behavior without editing Pixelmator 
+       Pro.  See:
 
        https://stackoverflow.com/questions/11705425/prefer-my-quicklook-plugin
 
